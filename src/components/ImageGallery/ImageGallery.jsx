@@ -1,4 +1,4 @@
-import { Component, createRef } from "react"; // new scroll
+import { useRef, createRef, useEffect, useState } from "react"; // new scroll
 import PropTypes from 'prop-types';
 // import * as Scroll from 'react-scroll';
 import { toast } from 'react-toastify';
@@ -12,95 +12,99 @@ import s from './ImageGallery.module.scss';
 
 const customId = "custom-id-yes";
 
-class ImageGallery extends Component {
+const ImageGallery = ({ queryProp }) => {
 
-    static propTypes = {
-        query: PropTypes.string.isRequired
+    const [query, setQuery] = useState('');
+    const [pictures, setPictures] = useState(null);
+    const [page, setPage] = useState(1);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState(null);
+    const [endOfCollection, setEndOfCollection] = useState(false);
+    const [modalData, setModalData] = useState(null);
+    const itemsAmount = 12;
+
+    const galleryItemRef = createRef(); // new scroll, get reference
+
+    if (query !== queryProp) {
+        setPage(1);
+        setQuery(queryProp);
     };
 
-    state = {
-        query: '',
-        pictures: null,
-        page: 1,
-        isLoading: false,
-        error: null,
-        endOfCollection: false,
-        modalData: null
+    useEffect(() => {
+        notify('Type in your search query...');
+    }, []);
+
+    const prevQueryProp = usePrevious(queryProp);
+    const prevPage = usePrevious(page);
+    const prevPictures = usePrevious(pictures);
+
+    function usePrevious(value) {
+        const ref = useRef();
+        useEffect(() => {
+          ref.current = value;
+        },[value]);
+        return ref.current;
     };
 
-    galleryItemRef = createRef(); // new scroll, get reference
+    useEffect(() => {
+        const setPics = async () => {
 
-    static getDerivedStateFromProps(props, state) {
-        if (state.query !== props.query) {
-          return { page: 1, query: props.query };
+            setIsLoading(true);
+            setError(null);
+            setEndOfCollection(false);
+        
+            try {
+              const newPictures = await fetchPicturesWithQuery(query, page);
+              if (newPictures.length === 0 && prevQueryProp !== query) {
+                throw new Error("No pictures found");
+              };
+              if (newPictures.length < 12 && pictures && prevQueryProp === query) {
+                setEndOfCollection(true);
+                notify("That's all! Try another query.");
+                // return;
+              };
+              setPictures(page === 1 ? newPictures : [...prevPictures, ...newPictures]);
+            //   const scroll = Scroll.animateScroll;
+            //   if (page > 1) {
+            //     setTimeout(() => {
+            //         scroll.scrollToBottom();
+            //     }, 500);
+            //   };
+            } catch (error) {
+                setError(error.message);
+                notify(`Error: ${error.message}!`);
+                setEndOfCollection(false);
+            } finally {
+                setIsLoading(false);
+            }
         };
-        return null;
-    };
-
-    componentDidMount() {
-        this.notify('Type in your search query...');
-    };
-
-    async componentDidUpdate(prevProps, prevState) {
-        const { page, query, pictures } = this.state;
         if (
-          (prevProps.query !== query && query !== '') ||
-          (prevState.page !== page && page !== 1)
-        ) {
-            this.setPics();
-        }
-        if (prevState.pictures !== pictures) { // new scroll
-            this.galleryItemRef.current?.scrollIntoView({ // new scroll
-                behavior: "smooth", // new scroll
-                block: "start", // new scroll
-            }); // new scroll
-        }; // new scroll
+            (prevQueryProp !== query && query !== '') ||
+            (prevPage !== page && page !== 1)
+          ) {
+              setPics();
+          }
+          if (prevPictures !== pictures) { // new scroll
+              galleryItemRef.current?.scrollIntoView({ // new scroll
+                  behavior: "smooth", // new scroll
+                  block: "start", // new scroll
+              }); // new scroll
+          }; // new scroll
+    }, [page, query, pictures, prevQueryProp, prevPage, prevPictures, galleryItemRef, endOfCollection]);
+
+    const changePage = () => {
+        setPage(prevPage + 1);
     };
 
-    setPics = async () => {
-        const { page, query, pictures: picturesInState } = this.state;
-        this.setState({ isLoading: true, error: null, endOfCollection: false });
-    
-        try {
-          const pictures = await fetchPicturesWithQuery(query, page);
-          if (pictures.length === 0 && page === 1 && !this.state.endOfCollection) {
-            throw new Error("No pictures found");
-          };
-          if (pictures.length < 12 && picturesInState) {
-            this.setState({ endOfCollection: true });
-            this.notify("That's all! Try another query.");
-            // return;
-          };
-          this.setState((prevState) => ({
-            pictures: page === 1 ? pictures : [...prevState.pictures, ...pictures],
-          }));
-        //   const scroll = Scroll.animateScroll;
-        //   if (page > 1) {
-        //     setTimeout(() => {
-        //         scroll.scrollToBottom();
-        //     }, 500);
-        //   };
-        } catch (error) {
-          this.setState({ error: error.message });
-          this.notify(`Error: ${error.message}!`);
-        } finally {
-          this.setState({ isLoading: false });
-        }
+    const openModal = (modalData) => {
+        setModalData(modalData);
     };
 
-    changePage = () => {
-        this.setState((prevState) => ({ page: prevState.page + 1 }));
+    const closeModal = () => {
+        setModalData(null);
     };
 
-    openModal = (modalData) => {
-        this.setState({ modalData });
-    };
-
-    closeModal = () => {
-        this.setState({ modalData: null });
-    };
-
-    notify = (message) => {
+    const notify = (message) => {
         switch (message) {
             case "Type in your search query...":
                 toast.info(message, {
@@ -128,35 +132,36 @@ class ImageGallery extends Component {
         
     };
 
-    render () {
-        const { pictures, error, isLoading, endOfCollection, modalData, itemsAmount = 12 } = this.state;
-        return (
-            <>
-                {modalData && <Modal {...modalData} closeModal={this.closeModal}/>}
-                {error ? this.notify(`Error: ${error}!`) :
-                    <>
-                        <ul className={s.ImageGallery}>
-                                {pictures && pictures.map((picture, idx, arr) => {
-                                        return <ImageGalleryItem
-                                            key={picture.id}
-                                            refInstance={arr.length - itemsAmount === idx} // new scroll get reference
-                                            galleryItemRef={this.galleryItemRef}
-                                            smallPictureUrl={picture.webformatURL}
-                                            largePictureUrl={picture.largeImageURL}
-                                            openModal={this.openModal}
-                                        />
-                                        }
-                                    )
-                                }
-                        </ul>
-                        {(pictures && !endOfCollection) && <Button onClickProp={this.changePage} isLoading={isLoading}/>}
-                    </>
-                }
-            </>
-        );
-    };
+
+    // const { pictures, error, isLoading, endOfCollection, modalData, itemsAmount = 12 } = this.state;
+    return (
+        <>
+            {modalData && <Modal {...modalData} closeModal={closeModal}/>}
+            {error ? notify(`Error: ${error}!`) :
+                <>
+                    <ul className={s.ImageGallery}>
+                            {pictures && pictures.map((picture, idx, arr) => {
+                                    return <ImageGalleryItem
+                                        key={picture.id}
+                                        refInstance={arr.length - itemsAmount === idx} // new scroll get reference
+                                        galleryItemRef={galleryItemRef}
+                                        smallPictureUrl={picture.webformatURL}
+                                        largePictureUrl={picture.largeImageURL}
+                                        openModal={openModal}
+                                    />
+                                    }
+                                )
+                            }
+                    </ul>
+                    {(pictures && !endOfCollection) && <Button onClickProp={changePage} isLoading={isLoading}/>}
+                </>
+            }
+        </>
+    );
+};
+
+ImageGallery.propTypes = {
+    queryProp: PropTypes.string.isRequired
 };
 
 export default ImageGallery;
-
-// http requests here

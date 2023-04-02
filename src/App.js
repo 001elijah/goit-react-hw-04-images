@@ -20,7 +20,7 @@ class App extends Component {
       <>
         <ToastContainer />
         <Searchbar searchbarToAppQuery={this.handleSearchbarSubmit}/>
-        <ImageGallery query={this.state.query}/>
+        <ImageGallery queryProp={this.state.query}/>
       </>
     );
   };
